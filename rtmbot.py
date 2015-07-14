@@ -15,11 +15,6 @@ from argparse import ArgumentParser
 from slackclient import SlackClient
 
 
-def dbg(debug_string):
-    if debug:
-        logging.info(debug_string)
-
-
 class RtmBot(object):
     def __init__(self, token):
         self.last_ping = 0
@@ -41,19 +36,18 @@ class RtmBot(object):
             self.crons()
             self.output()
             self.autoping()
-            time.sleep(.1)
+            time.sleep(config.get('MAIN_LOOP_INTERVAL', 0.1))
 
     def autoping(self):
-        # hardcode the interval to 3 seconds
         now = int(time.time())
-        if now > self.last_ping + 3:
+        if now > self.last_ping + config.get('PING_INTERVAL', 3):
             self.slack_client.server.ping()
             self.last_ping = now
 
     def input(self, data):
         if 'type' in data:
             function_name = 'process_' + data['type']
-            dbg('got {}'.format(function_name))
+            logging.debug('got {}'.format(function_name))
             for plugin in self.bot_plugins:
                 plugin.register_jobs()
                 plugin.do(function_name, data)
@@ -63,8 +57,8 @@ class RtmBot(object):
             limiter = False
             for output in plugin.do_output():
                 channel = self.slack_client.server.channels.find(output[0])
-                if channel != None and output[1] != None:
-                    if limiter == True:
+                if channel is not None and output[1] is not None:
+                    if limiter:
                         time.sleep(.1)
                         limiter = False
                     message = output[1].encode('ascii', 'ignore')
@@ -87,7 +81,7 @@ class RtmBot(object):
 
 class Plugin(object):
     def __init__(self, name, plugin_config=None):
-        plugin_config = plugin_config if plugin_config else {} # this isn't actually used...?
+        plugin_config = plugin_config if plugin_config else {}  # this isn't actually used...?
         self.name = name
         self.jobs = []
         self.module = __import__(name)
@@ -115,14 +109,14 @@ class Plugin(object):
                 try:
                     eval('self.module.' + function_name)(data)
                 except:
-                    dbg('problem in module {} {}'.format(function_name, data))
+                    logging.debug('problem in module {} {}'.format(function_name, data))
             else:
                 eval('self.module.' + function_name)(data)
         if 'catch_all' in dir(self.module):
             try:
                 self.module.catch_all(data)
             except:
-                dbg('problem in catch all')
+                logging.debug('problem in catch all')
 
     def do_jobs(self):
         for job in self.jobs:
@@ -160,7 +154,7 @@ class Job(object):
                 try:
                     self.function()
                 except:
-                    dbg('problem')
+                    logging.debug('problem')
             else:
                 self.function()
             self.lastrun = time.time()
@@ -173,19 +167,22 @@ class UnknownChannel(Exception):
 
 def main_loop():
     if 'LOGFILE' in config:
-        logging.basicConfig(filename=config['LOGFILE'], level=logging.INFO, format='%(asctime)s %(message)s')
+        level = logging.DEBUG if debug else logging.INFO
+        logging.basicConfig(filename=config['LOGFILE'], level=level, format='%(asctime)s [%(levelname)s] %(message)s')
     logging.info(directory)
     try:
         bot.start()
     except KeyboardInterrupt:
         sys.exit(0)
     except:
-        logging.exception('OOPS')
+        logging.exception('Error starting bot!')
 
 
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument('-c', '--config', help='Full path to config file.', metavar='path')
+    parser.add_argument('-v', '--verbose', help='Log moar.', action='store_true')
+    parser.add_argument('-d', '--daemon', help='Run as a daemon.', action='store_true')
     return parser.parse_args()
 
 
@@ -196,13 +193,16 @@ if __name__ == '__main__':
         directory = os.path.abspath('{}/{}'.format(os.getcwd(), directory))
 
     config = yaml.load(file(args.config or 'rtmbot.conf', 'r'))
-    debug = config['DEBUG']
-    bot = RtmBot(config['SLACK_TOKEN'])
+    debug = True if config.get('DEBUG') or args.verbose else False
+    token = config.get('SLACK_TOKEN')
+    if not token:
+        raise Exception('please provide a slack token')
+    bot = RtmBot(token)
     site_plugins = []
     files_currently_downloading = []
     job_hash = {}
 
-    if config.get('DAEMON'):
+    if config.get('DAEMON') or args.daemon:
         import daemon
         with daemon.DaemonContext():
             main_loop()

@@ -91,7 +91,6 @@ class Plugin(object):
         if 'crontable' in dir(self.module):
             for interval, function in self.module.crontable:
                 self.jobs.append(Job(interval, eval('self.module.' + function), self.config.get('DEBUG')))
-            logging.info(self.module.crontable)
             self.module.crontable = []
         else:
             self.module.crontable = []

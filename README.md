@@ -29,10 +29,9 @@ Installation
         pip install -r requirements.txt
 
 3. Configure rtmbot (https://api.slack.com/bot-users)
-        
-        cp doc/example-config/rtmbot.conf .
-        vi rtmbot.conf
-          SLACK_TOKEN: "xoxb-11111111111-222222222222222"
+
+        The bot will load settings from config/config.default and then override with config/config.local.
+        You must create a config.local and include the SLACK_TOKEN parameter for the bot to function!
 
 *Note*: At this point rtmbot is ready to run, however no plugins are configured.
 
